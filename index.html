@@ -6,92 +6,37 @@
 <title>Walkie-Talkie Online</title>
 
 <style>
-*{
-  box-sizing:border-box;
-  -webkit-tap-highlight-color:transparent;
-}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{
-  margin:0;
-  padding:0;
-  width:100%;
-  min-height:100%;
-  font-family:Arial,sans-serif;
-  background:#061527;
-  color:white;
+  margin:0;padding:0;width:100%;min-height:100%;
+  font-family:Arial,sans-serif;background:#061527;color:white;
 }
-body{
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  padding:15px;
-}
+body{display:flex;justify-content:center;align-items:center;padding:15px;}
 .card{
-  width:100%;
-  max-width:430px;
-  background:#183b64;
-  border-radius:26px;
-  padding:20px;
-  text-align:center;
+  width:100%;max-width:430px;background:#183b64;border-radius:26px;
+  padding:20px;text-align:center;
 }
-h1{
-  margin:5px 0 20px;
-  font-size:32px;
-}
+h1{margin:5px 0 20px;font-size:32px;}
 input{
-  width:100%;
-  padding:16px;
-  border:none;
-  border-radius:18px;
-  font-size:18px;
-  text-align:center;
-  margin:10px 0;
+  width:100%;padding:16px;border:none;border-radius:18px;
+  font-size:18px;text-align:center;margin:10px 0;
 }
-button{
-  border:none;
-  color:white;
-  font-weight:bold;
-}
+button{border:none;color:white;font-weight:bold;}
 .smallBtn{
-  width:220px;
-  padding:18px;
-  border-radius:18px;
-  font-size:18px;
-  margin:12px auto;
-  display:block;
+  width:220px;padding:18px;border-radius:18px;font-size:18px;
+  margin:12px auto;display:block;
 }
-.copy{
-  background:#95a5a6;
-}
-.connect{
-  background:#2ecc71;
-}
-hr{
-  border:1px solid rgba(255,255,255,.35);
-  margin:20px 0;
-}
+.copy{background:#95a5a6;}
+.connect{background:#2ecc71;}
+.reset{background:#e67e22;}
+hr{border:1px solid rgba(255,255,255,.35);margin:20px 0;}
 #talkBtn{
-  width:250px;
-  height:250px;
-  border-radius:50%;
-  background:#ef3340;
-  font-size:42px;
-  box-shadow:0 12px 0 #8d1520;
-  margin:20px auto;
-  display:block;
+  width:250px;height:250px;border-radius:50%;background:#ef3340;
+  font-size:42px;box-shadow:0 12px 0 #8d1520;margin:20px auto;display:block;
 }
-#talkBtn:active{
-  transform:translateY(8px);
-  box-shadow:0 3px 0 #8d1520;
-}
-#status{
-  color:#ffd166;
-  font-size:24px;
-  margin:15px 0;
-}
-#info{
-  color:#dfe6e9;
-  font-size:18px;
-}
+#talkBtn:active{transform:translateY(8px);box-shadow:0 3px 0 #8d1520;}
+#status{color:#ffd166;font-size:24px;margin:15px 0;}
+#info{color:#dfe6e9;font-size:18px;}
 </style>
 </head>
 
@@ -100,10 +45,11 @@ hr{
 <div class="card">
   <h1>📻 Walkie-Talkie</h1>
 
-  <p>Tu ID:</p>
+  <p>Tu ID fijo:</p>
   <input id="myId" readonly value="Generando ID...">
 
   <button class="smallBtn copy" onclick="copyMyId()">COPIAR MI ID</button>
+  <button class="smallBtn reset" onclick="resetMyId()">CAMBIAR MI ID</button>
 
   <hr>
 
@@ -133,7 +79,6 @@ let conn;
 let mediaCall;
 let localStream = null;
 let remotePeerId = "";
-let isTalking = false;
 
 const myId = document.getElementById("myId");
 const remoteIdInput = document.getElementById("remoteId");
@@ -143,6 +88,75 @@ const remoteAudio = document.getElementById("remoteAudio");
 
 function setStatus(text){
   statusDiv.innerText = text;
+}
+
+function getFixedId(){
+  let savedId = localStorage.getItem("mi_id_walkie");
+
+  if(!savedId){
+    savedId = "radio-" + Math.random().toString(36).substring(2, 10);
+    localStorage.setItem("mi_id_walkie", savedId);
+  }
+
+  return savedId;
+}
+
+function startPeer(){
+  const fixedId = getFixedId();
+
+  peer = new Peer(fixedId);
+
+  peer.on("open", id=>{
+    myId.value = id;
+    setStatus("Listo. Comparte tu ID fijo.");
+  });
+
+  peer.on("connection", connection=>{
+    conn = connection;
+    remotePeerId = connection.peer;
+
+    conn.on("open", ()=>{
+      setStatus("Conectado.");
+    });
+
+    conn.on("data", data=>{
+      if(data.type === "talking"){
+        setStatus("Recibiendo audio...");
+      }
+
+      if(data.type === "stopped"){
+        setStatus("Conectado.");
+      }
+    });
+  });
+
+  peer.on("call", async call=>{
+    try{
+      await prepareMic();
+
+      mediaCall = call;
+      call.answer(localStream);
+
+      call.on("stream", remoteStream=>{
+        playRemoteStream(remoteStream);
+      });
+
+      call.on("close", ()=>{
+        setStatus("Llamada cerrada.");
+      });
+
+    }catch{
+      setStatus("Permite el micrófono.");
+    }
+  });
+
+  peer.on("error", error=>{
+    if(error.type === "unavailable-id"){
+      setStatus("Este ID ya está en uso. Cierra la otra pestaña o cambia tu ID.");
+    }else{
+      setStatus("Error: " + error.type);
+    }
+  });
 }
 
 async function prepareMic(){
@@ -169,69 +183,14 @@ function playRemoteStream(remoteStream){
   remoteAudio.volume = 1;
   remoteAudio.muted = false;
 
-  const playPromise = remoteAudio.play();
-
-  if(playPromise !== undefined){
-    playPromise
-      .then(()=>{
-        setStatus("Conectado. Audio listo.");
-      })
-      .catch(()=>{
-        setStatus("Toca HABLAR una vez para activar el audio.");
-      });
-  }
+  remoteAudio.play()
+    .then(()=>{
+      setStatus("Conectado. Audio listo.");
+    })
+    .catch(()=>{
+      setStatus("Toca HABLAR una vez para activar el audio.");
+    });
 }
-
-peer = new Peer();
-
-peer.on("open", id=>{
-  myId.value = id;
-  setStatus("Listo. Comparte tu ID.");
-});
-
-peer.on("connection", connection=>{
-  conn = connection;
-  remotePeerId = connection.peer;
-
-  conn.on("open", ()=>{
-    setStatus("Conectado.");
-  });
-
-  conn.on("data", data=>{
-    if(data.type === "talking"){
-      setStatus("Recibiendo audio...");
-    }
-
-    if(data.type === "stopped"){
-      setStatus("Conectado.");
-    }
-  });
-});
-
-peer.on("call", async call=>{
-  try{
-    await prepareMic();
-
-    mediaCall = call;
-
-    call.answer(localStream);
-
-    call.on("stream", remoteStream=>{
-      playRemoteStream(remoteStream);
-    });
-
-    call.on("close", ()=>{
-      setStatus("Llamada cerrada.");
-    });
-
-  }catch(error){
-    setStatus("Permite el micrófono.");
-  }
-});
-
-peer.on("error", error=>{
-  setStatus("Error: " + error.type);
-});
 
 async function connectPeer(){
   remotePeerId = remoteIdInput.value.trim();
@@ -264,7 +223,7 @@ async function connectPeer(){
       setStatus("No se pudo conectar.");
     });
 
-  }catch(error){
+  }catch{
     setStatus("No se pudo activar el micrófono.");
   }
 }
@@ -274,8 +233,6 @@ function startTalking(){
     setStatus("Primero presiona CONECTAR.");
     return;
   }
-
-  isTalking = true;
 
   localStream.getAudioTracks().forEach(track=>{
     track.enabled = true;
@@ -290,8 +247,6 @@ function startTalking(){
 
 function stopTalking(){
   if(!localStream) return;
-
-  isTalking = false;
 
   localStream.getAudioTracks().forEach(track=>{
     track.enabled = false;
@@ -313,6 +268,13 @@ async function copyMyId(){
     document.execCommand("copy");
     setStatus("ID copiado.");
   }
+}
+
+function resetMyId(){
+  if(!confirm("¿Seguro que quieres cambiar tu ID fijo?")) return;
+
+  localStorage.removeItem("mi_id_walkie");
+  location.reload();
 }
 
 talkBtn.addEventListener("touchstart", e=>{
@@ -344,6 +306,8 @@ talkBtn.addEventListener("mouseleave", e=>{
   e.preventDefault();
   stopTalking();
 });
+
+startPeer();
 </script>
 
 </body>
